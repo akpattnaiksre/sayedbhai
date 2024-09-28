@@ -1,0 +1,179 @@
+# Starter pipeline
+
+trigger: none
+
+# Self Hosted Agent Pool
+pool:
+  name: Azure Datavoyager EUS
+
+ 
+
+variables:
+  - name: backendServiceArm
+    value: 'azspn-cpu-cis-fabric-corp-prod-001'
+  - name: backendAzureRmResourceGroupName
+    value: 'rg-mhub-tfstate-uks'
+  - name: backendAzureRmStorageAccountName
+    value: 'stmhubtfstateuks'
+  - name: backendAzureRmContainerName
+    value: 'cpu-cis-fabric-corp-prod-002'
+  - name: backendAzureRmKey
+    value: 'Voyager-prod-env.tfstate'
+  - name: backendAzureRmTenantId
+    value: '3f1b6f0c-3a11-45de-a302-7fe97b0d9a64'
+  - name: backendAzureRmSubscriptionId
+    value: '23901823-e0ae-47b1-b16e-f3897302cca3'
+  - name: providerAzureRmSubscriptionId
+    value: 'e39d7cfb-d17a-469e-8812-790e0a04825e'
+  - name: terraform_version
+    value: '1.9.3'
+  # - name: action
+  #   value: ${{ parameters.Action }}
+
+resources:
+  repositories:
+    - repository: TerraformModules
+      type: git
+      #ref: refs/tags/0.0.1
+      ref: main
+      name: VoyagerData/TerraformModules
+ 
+stages :  
+  - stage: Terraform_Plan 
+    
+    jobs:
+      - job: terraform_plan
+        steps:
+          - checkout: self
+            persistCredentials: true
+          - checkout: TerraformModules
+            persistCredentials: true
+          - task: TerraformInstaller@1
+            displayName: 'install'
+            inputs:
+              terraformVersion: '${{ variables.terraform_version }}'
+          - task: TerraformCLI@1
+            displayName: 'init'
+            inputs:
+              command: 'init'
+              workingDirectory: '$(Build.SourcesDirectory)/TerraformInfra-deploy'
+              backendType: 'azurerm'
+              backendServiceArm: '${{ variables.backendServiceArm }}'
+              backendAzureRmResourceGroupName: '${{ variables.backendAzureRmResourceGroupName }}'
+              backendAzureRmStorageAccountName: '${{ variables.backendAzureRmStorageAccountName }}'
+              backendAzureRmContainerName: '${{ variables.backendAzureRmContainerName }}'
+              backendAzureRmKey: '${{ variables.backendAzureRmKey }}'
+              backendAzureRmSubscriptionId: '${{ variables.backendAzureRmSubscriptionId }}'
+          - task: AzureCLI@2
+            displayName: Terraform Fmt
+            inputs:
+              azureSubscription: '${{ variables.backendServiceArm }}'
+              scriptType: ps
+              scriptLocation: inlineScript
+              inlineScript: |
+                cd $(Build.SourcesDirectory)/TerraformInfra-deploy
+                terraform fmt
+          - task: AzureCLI@2
+            displayName: Terraform validate
+            inputs:
+              azureSubscription: '${{ variables.backendServiceArm }}'
+              scriptType: ps
+              scriptLocation: inlineScript
+              inlineScript: |
+                cd $(Build.SourcesDirectory)/TerraformInfra-deploy
+                terraform validate
+          - task: AzureCLI@2
+            displayName: Terraform Plan
+            inputs:
+              azureSubscription: '${{ variables.backendServiceArm }}'
+              scriptType: ps
+              scriptLocation: inlineScript
+              inlineScript: |
+                cd $(Build.SourcesDirectory)/TerraformInfra-deploy
+                terraform plan -var-file="./terraform.prod.tfvars" -lock=false -input=false
+  - stage: Terraform_Apply
+    jobs:
+      - job: terraform_Apply
+        steps:
+          - checkout: self
+            persistCredentials: true
+          - checkout: TerraformModules
+            persistCredentials: true
+          - script: dir
+          
+          - task: TerraformInstaller@1
+            displayName: 'install'
+            inputs:
+              terraformVersion: '${{ variables.terraform_version }}'
+
+          - task: TerraformCLI@1
+            displayName: 'init'
+            inputs:
+              command: 'init'
+              workingDirectory: '$(Build.SourcesDirectory)/TerraformInfra-deploy'
+              backendType: 'azurerm'
+              backendServiceArm: '${{ variables.backendServiceArm }}'
+              backendAzureRmResourceGroupName: '${{ variables.backendAzureRmResourceGroupName }}'
+              backendAzureRmStorageAccountName: '${{ variables.backendAzureRmStorageAccountName }}'
+              backendAzureRmContainerName: '${{ variables.backendAzureRmContainerName }}'
+              backendAzureRmKey: '${{ variables.backendAzureRmKey }}'
+              backendAzureRmSubscriptionId: '${{ variables.backendAzureRmSubscriptionId }}'
+          
+          - task: AzureCLI@2
+            displayName: Terraform Plan
+            inputs:
+              azureSubscription: '${{ variables.backendServiceArm }}'
+              scriptType: ps
+              scriptLocation: inlineScript
+              inlineScript: |
+                cd $(Build.SourcesDirectory)/TerraformInfra-deploy
+                terraform plan -var-file="./terraform.prod.tfvars" -lock=false -input=false
+
+
+          - task: AzureCLI@2
+            displayName: Terraform Apply
+            inputs:
+              azureSubscription: '${{ variables.backendServiceArm }}'
+              scriptType: ps
+              scriptLocation: inlineScript
+              inlineScript: |
+                cd $(Build.SourcesDirectory)/TerraformInfra-deploy
+                terraform apply -var-file="./terraform.prod.tfvars" -lock=false -auto-approve -input=false
+  # - stage: Terraform_Destroy
+  #   jobs:
+  #     - job: terraform_Destroy
+  #       steps:
+  #         - checkout: self
+  #           persistCredentials: true
+  #         - checkout: TerraformModules
+  #           persistCredentials: true
+  #         - script: dir
+          
+  #         - task: TerraformInstaller@1
+  #           displayName: 'install'
+  #           inputs:
+  #             terraformVersion: '${{ variables.terraform_version }}'
+
+  #         - task: TerraformCLI@1
+  #           displayName: 'init'
+  #           inputs:
+  #             command: 'init'
+  #             workingDirectory: '$(Build.SourcesDirectory)/TerraformInfra-deploy'
+  #             backendType: 'azurerm'
+  #             backendServiceArm: '${{ variables.backendServiceArm }}'
+  #             backendAzureRmResourceGroupName: '${{ variables.backendAzureRmResourceGroupName }}'
+  #             backendAzureRmStorageAccountName: '${{ variables.backendAzureRmStorageAccountName }}'
+  #             backendAzureRmContainerName: '${{ variables.backendAzureRmContainerName }}'
+  #             backendAzureRmKey: '${{ variables.backendAzureRmKey }}'
+  #             backendAzureRmSubscriptionId: '${{ variables.backendAzureRmSubscriptionId }}'
+          
+  #         - task: AzureCLI@2
+  #           displayName: Terraform destroy
+  #           inputs:
+  #             azureSubscription: '${{ variables.backendServiceArm }}'
+  #             scriptType: ps
+  #             scriptLocation: inlineScript
+  #             inlineScript: |
+  #               cd $(Build.SourcesDirectory)/TerraformInfra-deploy
+  #               terraform destroy -var-file="./terraform.prod.tfvars" -lock=false -auto-approve -input=false
+  
